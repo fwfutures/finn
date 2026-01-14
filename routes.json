@@ -1,0 +1,22 @@
+{
+  "app": "finn",
+  "domain": "finn.freshwaterfutures.com",
+  "port": 3004,
+  "routes": [
+    "/",
+    "/health",
+    "/auth/login",
+    "/auth/callback",
+    "/auth/logout",
+    "/admin",
+    "/admin/*",
+    "/api/users",
+    "/api/users/*",
+    "/api/conversations",
+    "/api/conversations/*",
+    "/api/models",
+    "/api/models/*",
+    "/api/usage",
+    "/api/usage/export"
+  ]
+}
