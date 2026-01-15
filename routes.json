@@ -1,7 +1,7 @@
 {
   "app": "finn",
   "domain": "finn.freshwaterfutures.com",
-  "port": 3004,
+  "port": 3005,
   "routes": [
     "/",
     "/health",

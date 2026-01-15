@@ -1,0 +1,23 @@
+{
+  "name": "finn",
+  "version": "1.0.0",
+  "description": "Finn - Slack Bot Agent powered by Claude SDK",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir=dist --target=bun",
+    "migrate": "bun run src/store/migrate.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@slack/bolt": "^4.1.0",
+    "hono": "^4.6.0",
+    "nanoid": "^5.0.7",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.6.0"
+  }
+}
