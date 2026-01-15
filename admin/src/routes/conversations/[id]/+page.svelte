@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { getConversation, type Conversation, type Message, type User } from "$lib/api";
 
@@ -8,10 +7,18 @@
   let user: User | null = $state(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
+  let hasMounted = $state(false);
 
   let conversationId = $derived($page.params.id);
 
-  onMount(async () => {
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+      loadData();
+    }
+  });
+
+  async function loadData() {
     try {
       const result = await getConversation(conversationId);
       conversation = result.conversation;
@@ -22,7 +29,7 @@
     } finally {
       loading = false;
     }
-  });
+  }
 
   function formatTime(timestamp: number): string {
     return new Date(timestamp * 1000).toLocaleString();

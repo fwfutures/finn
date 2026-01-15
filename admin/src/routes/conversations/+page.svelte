@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { getConversations, getUsers, type Conversation, type User } from "$lib/api";
 
   let conversations: Conversation[] = $state([]);
@@ -9,8 +8,16 @@
   let error = $state<string | null>(null);
   let offset = $state(0);
   const limit = 50;
+  let hasMounted = $state(false);
 
-  onMount(async () => {
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+      loadData();
+    }
+  });
+
+  async function loadData() {
     try {
       const [convResult, usersResult] = await Promise.all([
         getConversations({ limit, offset }),
@@ -24,7 +31,7 @@
     } finally {
       loading = false;
     }
-  });
+  }
 
   async function loadMore() {
     offset += limit;

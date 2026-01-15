@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { getModels, updateModel, getUsage, type Model, type UsageData } from "$lib/api";
 
   let models: Model[] = $state([]);
@@ -7,8 +6,16 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let updating = $state<string | null>(null);
+  let hasMounted = $state(false);
 
-  onMount(async () => {
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+      loadData();
+    }
+  });
+
+  async function loadData() {
     try {
       const [modelsResult, usageResult] = await Promise.all([getModels(), getUsage(30)]);
       models = modelsResult.models;
@@ -18,7 +25,7 @@
     } finally {
       loading = false;
     }
-  });
+  }
 
   async function toggleModel(model: Model) {
     updating = model.id;

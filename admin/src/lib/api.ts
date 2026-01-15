@@ -25,8 +25,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 // Auth
 export async function checkAuth(): Promise<{ authenticated: boolean; email?: string }> {
-  const response = await fetch(`${AUTH_BASE}/me`, { credentials: "include" });
-  return response.json();
+  try {
+    const response = await fetch(`${AUTH_BASE}/me`, { credentials: "include" });
+    const data = await response.json();
+    return data;
+  } catch (err) {
+    console.error("checkAuth error:", err);
+    return { authenticated: false };
+  }
 }
 
 export async function logout(): Promise<void> {

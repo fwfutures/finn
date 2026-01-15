@@ -8,6 +8,7 @@
     "/auth/login",
     "/auth/callback",
     "/auth/logout",
+    "/auth/me",
     "/admin",
     "/admin/*",
     "/api/users",

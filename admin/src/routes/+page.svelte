@@ -1,12 +1,19 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { getStats, type Stats } from "$lib/api";
 
   let stats: Stats | null = $state(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
+  let hasMounted = $state(false);
 
-  onMount(async () => {
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+      loadData();
+    }
+  });
+
+  async function loadData() {
     try {
       stats = await getStats();
     } catch (e) {
@@ -14,7 +21,7 @@
     } finally {
       loading = false;
     }
-  });
+  }
 
   function formatTime(timestamp: number): string {
     const date = new Date(timestamp * 1000);

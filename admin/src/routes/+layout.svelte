@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { auth } from "$lib/stores/auth";
   import { logout } from "$lib/api";
   import "../app.css";
 
   let currentPath = $derived($page.url.pathname);
+  let hasCheckedAuth = $state(false);
 
   const navItems = [
     { href: "/admin", label: "Dashboard", icon: "📊" },
@@ -14,8 +15,19 @@
     { href: "/admin/settings", label: "Settings", icon: "⚙️" },
   ];
 
-  onMount(() => {
-    auth.check();
+  // Check auth on mount (runs once)
+  $effect(() => {
+    if (!hasCheckedAuth) {
+      hasCheckedAuth = true;
+      auth.check();
+    }
+  });
+
+  // Redirect to login if not authenticated
+  $effect(() => {
+    if (!$auth.loading && !$auth.authenticated && !currentPath.includes("/login")) {
+      goto("/admin/login");
+    }
   });
 
   async function handleLogout() {
@@ -28,10 +40,6 @@
   <div class="loading-screen">
     <p>Loading...</p>
   </div>
-{:else if !$auth.authenticated && !currentPath.includes("/login")}
-  <script>
-    window.location.href = "/admin/login";
-  </script>
 {:else if currentPath.includes("/login")}
   <slot />
 {:else}

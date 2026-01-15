@@ -1,12 +1,19 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { getUsers, type User } from "$lib/api";
 
   let users: User[] = $state([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
+  let hasMounted = $state(false);
 
-  onMount(async () => {
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+      loadData();
+    }
+  });
+
+  async function loadData() {
     try {
       const result = await getUsers();
       users = result.users;
@@ -15,7 +22,7 @@
     } finally {
       loading = false;
     }
-  });
+  }
 
   function formatDate(timestamp: number): string {
     return new Date(timestamp * 1000).toLocaleDateString();

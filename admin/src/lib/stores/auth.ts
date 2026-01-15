@@ -17,15 +17,18 @@ function createAuthStore() {
   return {
     subscribe,
     async check() {
+      console.log("[auth] check() called");
       try {
         const result = await checkAuth();
+        console.log("[auth] checkAuth result:", result);
         set({
           loading: false,
           authenticated: result.authenticated,
           email: result.email || null,
         });
         return result.authenticated;
-      } catch {
+      } catch (err) {
+        console.error("[auth] check() error:", err);
         set({ loading: false, authenticated: false, email: null });
         return false;
       }

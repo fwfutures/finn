@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { getUser, updateUserRole, type User, type Conversation } from "$lib/api";
 
@@ -8,10 +7,18 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let updating = $state(false);
+  let hasMounted = $state(false);
 
   let userId = $derived($page.params.id);
 
-  onMount(async () => {
+  $effect(() => {
+    if (!hasMounted) {
+      hasMounted = true;
+      loadData();
+    }
+  });
+
+  async function loadData() {
     try {
       const result = await getUser(userId);
       user = result.user;
@@ -21,7 +28,7 @@
     } finally {
       loading = false;
     }
-  });
+  }
 
   async function handleRoleChange(event: Event) {
     const select = event.target as HTMLSelectElement;
