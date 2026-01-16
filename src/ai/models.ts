@@ -8,6 +8,14 @@ export interface ModelConfig {
   enabled: boolean;
 }
 
+export interface CreateModelParams {
+  id: string;
+  provider: "claude" | "openrouter";
+  modelId: string;
+  displayName: string;
+  enabled?: boolean;
+}
+
 export async function getAvailableModels(): Promise<ModelConfig[]> {
   const rows = db
     .prepare(
@@ -114,4 +122,19 @@ export async function updateModel(
   values.push(id);
 
   db.prepare(`UPDATE model_config SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+}
+
+export async function createModel(params: CreateModelParams): Promise<ModelConfig> {
+  const enabled = params.enabled ?? true;
+  db.prepare(
+    `INSERT INTO model_config (id, provider, model_id, display_name, enabled)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO NOTHING`
+  ).run(params.id, params.provider, params.modelId, params.displayName, enabled ? 1 : 0);
+
+  const model = await getModelById(params.id);
+  if (!model) {
+    throw new Error(`Failed to create model '${params.id}'`);
+  }
+  return model;
 }

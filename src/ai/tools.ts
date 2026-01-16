@@ -1,5 +1,5 @@
 import type { Tool as ClaudeTool } from "@anthropic-ai/sdk/resources/messages";
-import { getAvailableModels, getModelByAlias, getModelByProviderId } from "./models";
+import { createModel, getAvailableModels, getModelByAlias, getModelByProviderId } from "./models";
 import { updateUserModel } from "../services/users";
 import { resetUserConversation } from "../services/conversations";
 import { getOpenRouterModels, refreshOpenRouterModels, searchOpenRouterModels } from "./openrouter_models";
@@ -132,6 +132,47 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
           models.find((item) => normalize(item.id) === normalizedValue) ||
           models.find((item) => normalize(item.displayName) === normalizedValue) ||
           null;
+      }
+
+      if (!model) {
+        const normalizedLower = normalized.toLowerCase();
+        let openRouterModel = null;
+        try {
+          const { cache } = await getOpenRouterModels({
+            refresh: false,
+            maxAgeMs: Number.MAX_SAFE_INTEGER,
+          });
+          openRouterModel =
+            cache.models.find((entry) => entry.id.toLowerCase() === normalizedLower) ||
+            null;
+        } catch {
+          openRouterModel = null;
+        }
+
+        if (!openRouterModel) {
+          try {
+            const cache = await refreshOpenRouterModels();
+            openRouterModel =
+              cache.models.find((entry) => entry.id.toLowerCase() === normalizedLower) ||
+              null;
+          } catch {
+            openRouterModel = null;
+          }
+        }
+
+        if (openRouterModel) {
+          const displayName =
+            typeof openRouterModel.name === "string"
+              ? openRouterModel.name
+              : openRouterModel.id;
+          model = await createModel({
+            id: openRouterModel.id,
+            provider: "openrouter",
+            modelId: openRouterModel.id,
+            displayName,
+            enabled: true,
+          });
+        }
       }
 
       if (!model) {
