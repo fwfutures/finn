@@ -18,6 +18,7 @@
     "/api/models",
     "/api/models/*",
     "/api/usage",
-    "/api/usage/export"
+    "/api/usage/export",
+    "/api/stats"
   ]
 }
