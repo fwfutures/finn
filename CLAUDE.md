@@ -25,7 +25,10 @@ finn/
 │   │   ├── provider.ts          # AI provider router/factory
 │   │   ├── claude.ts            # Claude SDK integration
 │   │   ├── openrouter.ts        # OpenRouter API integration
+│   │   ├── tools.ts             # Tool registry + execution (models, reset, OpenRouter search)
+│   │   ├── openrouter_models.ts # OpenRouter model cache + search helpers
 │   │   └── models.ts            # Model definitions and aliases
+│   │   └── __tests__/tools.test.ts # Bun tests (unit + integration for tools)
 │   │
 │   ├── services/                # Business Logic
 │   │   ├── database.ts          # SQLite operations
@@ -100,6 +103,9 @@ cd admin && bun run dev
 # Build all
 bun run build
 cd admin && bun run build
+
+# Run tests
+bun test
 ```
 
 ### Production (Systemd)
@@ -182,6 +188,15 @@ Users can interact with Finn via DMs or @mentions:
 - `gpt-4o` - OpenAI GPT-4o
 - `gemini-pro` - Google Gemini Pro
 - `llama-3` - Meta Llama 3
+
+Note: models are stored in `model_config` and may include aliases plus provider model IDs. Tooling can resolve model requests by alias, provider model id, or display name (fuzzy).
+
+## Tool Calling
+
+Tool calling is enabled for both Claude and OpenRouter providers:
+- Tools are defined in `src/ai/tools.ts` (list/switch/reset + OpenRouter model refresh/search).
+- OpenRouter model catalog is cached at `data/openrouter-models.json` (refreshed via tool or on-demand).
+- `generateClaudeResponse` and `generateOpenRouterResponse` execute tool loops (up to 3 rounds).
 
 ## Admin Dashboard
 
@@ -334,3 +349,19 @@ Finn: Switched to GPT-4. How can I help?
 curl -s http://localhost:3004/health
 # {"status":"ok"}
 ```
+
+### Bun Tests
+```bash
+bun test
+```
+
+### Integration Tests (live APIs)
+Integration tests run when `.env` is present and include:
+- OpenRouter `/models` fetch
+- OpenRouter tool-calling flow (default models: `openai/gpt-5.2` and `moonshotai/kimi-k2`)
+- Claude tool-calling flow (default model: Sonnet 4.5)
+
+Optional overrides in `.env`:
+- `RUN_INTEGRATION=1` (defaults to true if set)
+- `OPENROUTER_TOOL_MODEL`, `OPENROUTER_SWITCH_MODEL`, `OPENROUTER_SWITCH_MODEL_ID`, `OPENROUTER_SWITCH_DISPLAY_NAME`
+- `ANTHROPIC_TOOL_MODEL`, `ANTHROPIC_TOOL_MODEL_ALIAS`
