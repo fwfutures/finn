@@ -1,8 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { ContentBlockParam, ImageBlockParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages";
+import type {
+  ContentBlockParam,
+  ImageBlockParam,
+  TextBlockParam,
+  ToolResultBlockParam,
+  ToolUseBlock,
+  ToolChoice,
+} from "@anthropic-ai/sdk/resources/messages";
 import { config } from "../config";
 import type { Message } from "../services/conversations";
 import type { Attachment } from "../services/attachments";
+import { executeTool, getClaudeTools, TOOL_SYSTEM_PROMPT, type ToolContext } from "./tools";
 
 const client = new Anthropic({
   apiKey: config.anthropicApiKey,
@@ -76,7 +84,9 @@ function attachmentsToClaudeContent(
 export async function generateClaudeResponse(
   modelId: string,
   messages: Message[],
-  systemPrompt?: string
+  systemPrompt?: string,
+  toolContext?: ToolContext,
+  options?: { toolChoice?: ToolChoice; client?: Anthropic }
 ): Promise<AIResponse> {
   const anthropicMessages = messages
     .filter((m) => m.role !== "system")
@@ -85,20 +95,84 @@ export async function generateClaudeResponse(
       content: attachmentsToClaudeContent(m.content, m.attachments),
     }));
 
-  const response = await client.messages.create({
+  const tools = toolContext ? getClaudeTools() : [];
+  const system = [systemPrompt || config.defaultSystemPrompt, tools.length ? TOOL_SYSTEM_PROMPT : ""]
+    .filter(Boolean)
+    .join("\n\n");
+
+  let inputTokens = 0;
+  let outputTokens = 0;
+  const apiClient = options?.client ?? client;
+  let response = await apiClient.messages.create({
     model: modelId,
     max_tokens: 4096,
-    system: systemPrompt || config.defaultSystemPrompt,
+    system,
     messages: anthropicMessages,
+    tools: tools.length ? tools : undefined,
+    tool_choice: tools.length ? options?.toolChoice : undefined,
   });
 
-  const textContent = response.content.find((c) => c.type === "text");
-  const content = textContent?.type === "text" ? textContent.text : "";
+  inputTokens += response.usage.input_tokens;
+  outputTokens += response.usage.output_tokens;
+
+  for (let step = 0; step < 3; step++) {
+    const toolUses = response.content.filter((block) => block.type === "tool_use") as ToolUseBlock[];
+    if (toolUses.length === 0 || !toolContext) {
+      const textBlocks = response.content.filter(
+        (block) => block.type === "text"
+      ) as TextBlockParam[];
+      const content = textBlocks.map((block) => block.text).join("");
+
+      return {
+        content,
+        model: response.model,
+        inputTokens,
+        outputTokens,
+      };
+    }
+
+    const toolResults: ToolResultBlockParam[] = [];
+    for (const toolUse of toolUses) {
+      const result = await executeTool(toolUse.name, toolUse.input, toolContext);
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: toolUse.id,
+        content: result.content,
+        is_error: result.isError,
+      });
+    }
+
+    anthropicMessages.push({
+      role: "assistant",
+      content: response.content,
+    });
+    anthropicMessages.push({
+      role: "user",
+      content: toolResults,
+    });
+
+    response = await apiClient.messages.create({
+      model: modelId,
+      max_tokens: 4096,
+      system,
+      messages: anthropicMessages,
+      tools: tools.length ? tools : undefined,
+      tool_choice: tools.length ? options?.toolChoice : undefined,
+    });
+
+    inputTokens += response.usage.input_tokens;
+    outputTokens += response.usage.output_tokens;
+  }
+
+  const fallbackText = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => (block as TextBlockParam).text)
+    .join("");
 
   return {
-    content,
+    content: fallbackText,
     model: response.model,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
+    inputTokens,
+    outputTokens,
   };
 }

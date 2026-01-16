@@ -3,6 +3,7 @@ import { generateClaudeResponse } from "./claude";
 import { generateOpenRouterResponse } from "./openrouter";
 import { getConversationMessages } from "../services/conversations";
 import { config } from "../config";
+import type { ToolContext } from "./tools";
 
 export interface AIResponse {
   content: string;
@@ -13,7 +14,8 @@ export interface AIResponse {
 
 export async function generateResponse(
   conversationId: string,
-  modelAlias: string
+  modelAlias: string,
+  toolContext?: ToolContext
 ): Promise<AIResponse> {
   // Get model configuration
   const model = await getModelById(modelAlias);
@@ -31,9 +33,14 @@ export async function generateResponse(
   // Route to appropriate provider
   switch (model.provider) {
     case "claude":
-      return generateClaudeResponse(model.modelId, messages, config.defaultSystemPrompt);
+      return generateClaudeResponse(model.modelId, messages, config.defaultSystemPrompt, toolContext);
     case "openrouter":
-      return generateOpenRouterResponse(model.modelId, messages, config.defaultSystemPrompt);
+      return generateOpenRouterResponse(
+        model.modelId,
+        messages,
+        config.defaultSystemPrompt,
+        toolContext
+      );
     default:
       throw new Error(`Unknown provider: ${model.provider}`);
   }

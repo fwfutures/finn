@@ -87,7 +87,10 @@ export async function handleMessage({ message, client, say }: MessageEvent) {
     try {
       // Generate AI response
       const startTime = Date.now();
-      const response = await generateResponse(conversation.id, user.preferredModel);
+      const response = await generateResponse(conversation.id, user.preferredModel, {
+        user,
+        conversation,
+      });
       const latencyMs = Date.now() - startTime;
 
       // Add assistant message to history

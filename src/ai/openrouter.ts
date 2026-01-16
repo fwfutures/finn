@@ -1,6 +1,7 @@
 import { config } from "../config";
 import type { Message } from "../services/conversations";
 import type { Attachment } from "../services/attachments";
+import { executeTool, getOpenRouterTools, TOOL_SYSTEM_PROMPT, type ToolContext } from "./tools";
 
 export interface AIResponse {
   content: string;
@@ -15,7 +16,8 @@ interface OpenRouterResponse {
   choices: Array<{
     message: {
       role: string;
-      content: string;
+      content?: string | null;
+      tool_calls?: OpenRouterToolCall[];
     };
     finish_reason: string;
   }>;
@@ -23,6 +25,15 @@ interface OpenRouterResponse {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+  };
+}
+
+interface OpenRouterToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
   };
 }
 
@@ -90,16 +101,23 @@ function attachmentsToOpenRouterContent(
 export async function generateOpenRouterResponse(
   modelId: string,
   messages: Message[],
-  systemPrompt?: string
+  systemPrompt?: string,
+  toolContext?: ToolContext,
+  options?: { toolChoice?: unknown }
 ): Promise<AIResponse> {
   if (!config.openrouterApiKey) {
     throw new Error("OpenRouter API key not configured");
   }
 
-  const openRouterMessages = [
+  const tools = toolContext ? getOpenRouterTools() : [];
+  const system = [systemPrompt || config.defaultSystemPrompt, tools.length ? TOOL_SYSTEM_PROMPT : ""]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const openRouterMessages: Array<Record<string, unknown>> = [
     {
       role: "system",
-      content: systemPrompt || config.defaultSystemPrompt,
+      content: system,
     },
     ...messages.map((m) => ({
       role: m.role,
@@ -107,32 +125,84 @@ export async function generateOpenRouterResponse(
     })),
   ];
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.openrouterApiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": config.publicUrl,
-      "X-Title": "Finn Slack Bot",
-    },
-    body: JSON.stringify({
-      model: modelId,
-      messages: openRouterMessages,
-      max_tokens: 4096,
-    }),
-  });
+  let inputTokens = 0;
+  let outputTokens = 0;
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenRouter API error: ${response.status} ${error}`);
+  for (let step = 0; step < 3; step++) {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.openrouterApiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": config.publicUrl,
+        "X-Title": "Finn Slack Bot",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: openRouterMessages,
+        max_tokens: 4096,
+        tools: tools.length ? tools : undefined,
+        tool_choice: tools.length ? (options?.toolChoice ?? "auto") : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} ${error}`);
+    }
+
+    const data = (await response.json()) as OpenRouterResponse;
+    const choice = data.choices[0];
+    const message = choice?.message;
+    const toolCalls = message?.tool_calls ?? [];
+
+    inputTokens += data.usage?.prompt_tokens || 0;
+    outputTokens += data.usage?.completion_tokens || 0;
+
+    if (!toolCalls.length || !toolContext) {
+      return {
+        content: message?.content || "",
+        model: data.model,
+        inputTokens,
+        outputTokens,
+      };
+    }
+
+    openRouterMessages.push({
+      role: "assistant",
+      content: message?.content ?? null,
+      tool_calls: toolCalls,
+    });
+
+    for (const call of toolCalls) {
+      let parsedArgs: unknown = {};
+      try {
+        parsedArgs = call.function.arguments
+          ? (JSON.parse(call.function.arguments) as unknown)
+          : {};
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Invalid JSON arguments";
+        openRouterMessages.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: JSON.stringify({ ok: false, error: message }),
+        });
+        continue;
+      }
+
+      const result = await executeTool(call.function.name, parsedArgs, toolContext);
+      openRouterMessages.push({
+        role: "tool",
+        tool_call_id: call.id,
+        content: result.content,
+      });
+    }
   }
 
-  const data = (await response.json()) as OpenRouterResponse;
-
   return {
-    content: data.choices[0]?.message?.content || "",
-    model: data.model,
-    inputTokens: data.usage?.prompt_tokens || 0,
-    outputTokens: data.usage?.completion_tokens || 0,
+    content: "Sorry, I ran into a tool loop while responding.",
+    model: modelId,
+    inputTokens,
+    outputTokens,
   };
 }

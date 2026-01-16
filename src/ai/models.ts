@@ -64,6 +64,34 @@ export async function getModelById(id: string): Promise<ModelConfig | null> {
   return getModelByAlias(id);
 }
 
+export async function getModelByProviderId(modelId: string): Promise<ModelConfig | null> {
+  const row = db
+    .prepare(
+      `SELECT id, provider, model_id as modelId, display_name as displayName, enabled
+       FROM model_config
+       WHERE model_id = ?`
+    )
+    .get(modelId) as
+    | {
+        id: string;
+        provider: string;
+        modelId: string;
+        displayName: string;
+        enabled: number;
+      }
+    | undefined;
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    provider: row.provider as "claude" | "openrouter",
+    modelId: row.modelId,
+    displayName: row.displayName,
+    enabled: row.enabled === 1,
+  };
+}
+
 export async function updateModel(
   id: string,
   updates: Partial<Pick<ModelConfig, "displayName" | "enabled">>
