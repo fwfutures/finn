@@ -49,6 +49,7 @@ export function initializeDatabase() {
       conversation_id TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
       content TEXT NOT NULL,
+      attachments TEXT,
       model TEXT,
       input_tokens INTEGER,
       output_tokens INTEGER,
@@ -122,7 +123,24 @@ export function initializeDatabase() {
     }
   }
 
+  // Run migrations for existing databases
+  runMigrations();
+
   console.log("Database initialized successfully");
+}
+
+// Migrations for schema updates
+function runMigrations() {
+  // Check if attachments column exists in messages table
+  const tableInfo = db.prepare("PRAGMA table_info(messages)").all() as Array<{
+    name: string;
+  }>;
+  const hasAttachments = tableInfo.some((col) => col.name === "attachments");
+
+  if (!hasAttachments) {
+    console.log("Migration: Adding attachments column to messages table");
+    db.exec("ALTER TABLE messages ADD COLUMN attachments TEXT");
+  }
 }
 
 // Cleanup function

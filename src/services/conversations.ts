@@ -1,5 +1,10 @@
 import { db } from "../store";
 import { nanoid } from "nanoid";
+import {
+  type Attachment,
+  serializeAttachments,
+  deserializeAttachments,
+} from "./attachments";
 
 export interface Conversation {
   id: string;
@@ -17,6 +22,7 @@ export interface Message {
   conversationId: string;
   role: "user" | "assistant" | "system";
   content: string;
+  attachments?: Attachment[];
   model: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
@@ -35,6 +41,7 @@ interface AddMessageParams {
   conversationId: string;
   role: "user" | "assistant" | "system";
   content: string;
+  attachments?: Attachment[];
   model?: string;
   inputTokens?: number;
   outputTokens?: number;
@@ -104,15 +111,19 @@ export async function getOrCreateConversation(
 export async function addMessage(params: AddMessageParams): Promise<Message> {
   const id = nanoid();
   const now = Math.floor(Date.now() / 1000);
+  const attachmentsJson = params.attachments
+    ? serializeAttachments(params.attachments)
+    : null;
 
   db.prepare(
-    `INSERT INTO messages (id, conversation_id, role, content, model, input_tokens, output_tokens, latency_ms, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO messages (id, conversation_id, role, content, attachments, model, input_tokens, output_tokens, latency_ms, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     params.conversationId,
     params.role,
     params.content,
+    attachmentsJson,
     params.model || null,
     params.inputTokens || null,
     params.outputTokens || null,
@@ -152,6 +163,7 @@ export async function addMessage(params: AddMessageParams): Promise<Message> {
     conversationId: params.conversationId,
     role: params.role,
     content: params.content,
+    attachments: params.attachments,
     model: params.model || null,
     inputTokens: params.inputTokens || null,
     outputTokens: params.outputTokens || null,
@@ -163,16 +175,30 @@ export async function addMessage(params: AddMessageParams): Promise<Message> {
 export async function getConversationMessages(conversationId: string): Promise<Message[]> {
   const rows = db
     .prepare(
-      `SELECT id, conversation_id as conversationId, role, content, model,
-              input_tokens as inputTokens, output_tokens as outputTokens,
+      `SELECT id, conversation_id as conversationId, role, content, attachments,
+              model, input_tokens as inputTokens, output_tokens as outputTokens,
               latency_ms as latencyMs, created_at as createdAt
        FROM messages
        WHERE conversation_id = ?
        ORDER BY created_at ASC`
     )
-    .all(conversationId) as Message[];
+    .all(conversationId) as Array<{
+    id: string;
+    conversationId: string;
+    role: "user" | "assistant" | "system";
+    content: string;
+    attachments: string | null;
+    model: string | null;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    latencyMs: number | null;
+    createdAt: number;
+  }>;
 
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    attachments: deserializeAttachments(row.attachments),
+  }));
 }
 
 export async function getConversationById(id: string): Promise<Conversation | null> {

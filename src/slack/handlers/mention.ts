@@ -3,6 +3,7 @@ import { parseCommand, handleCommand } from "./commands";
 import { getOrCreateConversation, addMessage } from "../../services/conversations";
 import { getOrCreateUser } from "../../services/users";
 import { generateResponse } from "../../ai/provider";
+import { processSlackFiles, type Attachment } from "../../services/attachments";
 
 type MentionEvent = SlackEventMiddlewareArgs<"app_mention"> & AllMiddlewareArgs;
 
@@ -14,7 +15,10 @@ export async function handleMention({ event, client, say }: MentionEvent) {
   // Remove the bot mention from the text
   const text = event.text.replace(/<@[A-Z0-9]+>/g, "").trim();
 
-  if (!text) {
+  // Get files from event (if any)
+  const files = ("files" in event && Array.isArray(event.files)) ? event.files : [];
+
+  if (!text && files.length === 0) {
     await say({
       text: "Hi! How can I help you? Send me a message or use `help` to see available commands.",
       thread_ts: threadTs,
@@ -33,12 +37,14 @@ export async function handleMention({ event, client, say }: MentionEvent) {
       email: userInfo.user?.profile?.email,
     });
 
-    // Check if this is a command
-    const command = parseCommand(text);
-    if (command) {
-      const response = await handleCommand(command, user);
-      await say({ text: response, thread_ts: threadTs });
-      return;
+    // Check if this is a command (commands don't have attachments)
+    if (text && files.length === 0) {
+      const command = parseCommand(text);
+      if (command) {
+        const response = await handleCommand(command, user);
+        await say({ text: response, thread_ts: threadTs });
+        return;
+      }
     }
 
     // Get or create conversation for this thread
@@ -49,11 +55,18 @@ export async function handleMention({ event, client, say }: MentionEvent) {
       model: user.preferredModel,
     });
 
+    // Process attachments if present
+    let attachments: Attachment[] = [];
+    if (files.length > 0) {
+      attachments = await processSlackFiles(files, client);
+    }
+
     // Add user message to history
     await addMessage({
       conversationId: conversation.id,
       role: "user",
       content: text,
+      attachments: attachments.length > 0 ? attachments : undefined,
     });
 
     // Post thinking indicator in thread
