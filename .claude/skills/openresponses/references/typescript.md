@@ -169,27 +169,12 @@ for (const item of toolResponse.output) {
 
 Full implementation of a tool-calling loop that continues until the model stops requesting tools.
 
+### With `previous_response_id` (Recommended)
+
+Uses the provider's conversation state to automatically track history:
+
 ```typescript
-interface Tool {
-  type: 'function';
-  name: string;
-  description?: string;
-  parameters?: Record<string, unknown>;
-}
-
-interface InputItem {
-  type: string;
-  [key: string]: unknown;
-}
-
-interface FunctionCallItem {
-  type: 'function_call';
-  call_id: string;
-  name: string;
-  arguments: string;
-}
-
-async function agenticLoop(
+async function agenticLoopWithState(
   client: OpenResponsesClient,
   initialInput: string,
   tools: Tool[],
@@ -213,13 +198,11 @@ async function agenticLoop(
 
     previousResponseId = response.id;
 
-    // Check for function calls
     const functionCalls = response.output.filter(
       (item): item is FunctionCallItem => item.type === 'function_call'
     );
 
     if (functionCalls.length === 0) {
-      // No more tool calls, return final message
       const message = response.output.find(item => item.type === 'message');
       if (message && 'content' in message) {
         const content = message.content as Array<{ type: string; text?: string }>;
@@ -228,7 +211,7 @@ async function agenticLoop(
       return '';
     }
 
-    // Execute tools and build next input
+    // With previous_response_id, only send tool outputs
     currentInput = [];
     for (const call of functionCalls) {
       const result = await executeToolFn(call.name, JSON.parse(call.arguments));
@@ -240,7 +223,70 @@ async function agenticLoop(
     }
   }
 
-  throw new Error('Max iterations reached in agentic loop');
+  throw new Error('Max iterations reached');
+}
+```
+
+### Without `previous_response_id` (Manual History)
+
+**⚠️ Important**: When NOT using `previous_response_id`, you must include the full conversation history including `function_call` items before their outputs:
+
+```typescript
+async function agenticLoopManual(
+  client: OpenResponsesClient,
+  initialInput: string,
+  tools: Tool[],
+  executeToolFn: (name: string, args: Record<string, unknown>) => Promise<string>
+): Promise<string> {
+  // Accumulate full conversation history
+  let conversationHistory: InputItem[] = [
+    { type: 'message', role: 'user', content: initialInput }
+  ];
+  let iterations = 0;
+  const maxIterations = 5;
+
+  while (iterations < maxIterations) {
+    iterations++;
+
+    const response = await client.createResponse({
+      input: conversationHistory,
+      tools,
+    });
+
+    const functionCalls = response.output.filter(
+      (item): item is FunctionCallItem => item.type === 'function_call'
+    );
+
+    if (functionCalls.length === 0) {
+      const message = response.output.find(item => item.type === 'message');
+      if (message && 'content' in message) {
+        const content = message.content as Array<{ type: string; text?: string }>;
+        return content[0]?.text || '';
+      }
+      return '';
+    }
+
+    // CRITICAL: Add BOTH function_call AND function_call_output to history
+    for (const call of functionCalls) {
+      // First, add the function_call item from the response
+      conversationHistory.push({
+        type: 'function_call',
+        call_id: call.call_id,
+        name: call.name,
+        arguments: call.arguments,
+      });
+
+      // Then execute and add the output
+      const result = await executeToolFn(call.name, JSON.parse(call.arguments));
+      conversationHistory.push({
+        type: 'function_call_output',
+        call_id: call.call_id,
+        output: result,
+      });
+    }
+  }
+
+  throw new Error('Max iterations reached');
 }
 ```
 

@@ -112,6 +112,25 @@ while (true) {
 }
 ```
 
+### Manual History (without `previous_response_id`)
+
+**⚠️ Critical**: When NOT using `previous_response_id`, you must include the `function_call` items in the input array before the `function_call_output`. The API requires seeing the original tool call that matches each `call_id`.
+
+```typescript
+// ❌ WRONG - will fail with "No tool call found for function call output"
+input: [
+  { type: "message", role: "user", content: "Calculate 15 * 7" },
+  { type: "function_call_output", call_id: "call_abc", output: "105" }
+]
+
+// ✅ CORRECT - include the function_call before its output
+input: [
+  { type: "message", role: "user", content: "Calculate 15 * 7" },
+  { type: "function_call", call_id: "call_abc", name: "calculator", arguments: '{"expr":"15*7"}' },
+  { type: "function_call_output", call_id: "call_abc", output: "105" }
+]
+```
+
 ## Best Practices
 
 1. Use `previous_response_id` for multi-turn instead of re-sending history
@@ -119,6 +138,55 @@ while (true) {
 3. Handle `status: "incomplete"` on items (generation truncated)
 4. Limit tool loops (max 3-5 iterations)
 5. Use provider routing on OpenRouter for cost optimization
+
+## Common Pitfalls
+
+### Tool Choice Options
+
+| Value | Behavior | Notes |
+|-------|----------|-------|
+| `"auto"` | Model decides | Default, may not always call tools |
+| `"required"` | Must call ≥1 tool | Most reliable for forcing tool use |
+| `"none"` | No tools allowed | Useful for final response after tool execution |
+| `{ type: "function", name: "X" }` | Force specific tool | May vary by provider |
+
+**Tip**: Use `tool_choice: "required"` when you need guaranteed tool execution. Specific function targeting may not work reliably across all providers.
+
+### Response Output Structure
+
+Responses may contain **multiple output items** of different types:
+
+```typescript
+// Response can have both message AND function_call items
+const response = await client.createResponse({ ... });
+
+// Extract by type - don't assume order or single item
+const message = response.output.find(i => i.type === 'message');
+const toolCalls = response.output.filter(i => i.type === 'function_call');
+
+// Check for tool calls first
+if (toolCalls.length > 0) {
+  // Handle tool execution
+} else if (message) {
+  // Extract final text
+  const text = message.content[0]?.text;
+}
+```
+
+### Anthropic via OpenRouter
+
+Anthropic models don't have native `/v1/responses` support, but work through OpenRouter's proxy:
+
+```typescript
+// Use OpenRouter endpoint with Anthropic model
+const response = await fetch('https://openrouter.ai/api/v1/responses', {
+  headers: { Authorization: `Bearer ${OPENROUTER_API_KEY}` },
+  body: JSON.stringify({
+    model: 'anthropic/claude-sonnet-4',  // Anthropic model via OpenRouter
+    input: 'Hello!',
+  }),
+});
+```
 
 ## References
 

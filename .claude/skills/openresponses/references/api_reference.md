@@ -76,13 +76,13 @@ type ContentPart =
   | { type: "input_file"; file_id?: string; filename?: string; file_data?: string }
   | { type: "input_audio"; data: string; format: "mp3" | "wav" };
 
-// Function call items
+// Function call items (for manual history without previous_response_id)
 interface FunctionCallItem {
   type: "function_call";
   id?: string;
   call_id: string;
   name: string;
-  arguments: string;
+  arguments: string;  // JSON string
 }
 
 interface FunctionCallOutputItem {
@@ -90,6 +90,18 @@ interface FunctionCallOutputItem {
   call_id: string;
   output: string;
 }
+
+// ⚠️ IMPORTANT: When manually constructing conversation history (not using
+// previous_response_id), you MUST include FunctionCallItem in the input
+// array BEFORE its corresponding FunctionCallOutputItem. The API requires
+// seeing the original tool call that matches each call_id.
+//
+// Example:
+// input: [
+//   { type: "message", role: "user", content: "Calculate 15 * 7" },
+//   { type: "function_call", call_id: "call_abc", name: "calc", arguments: '{"x":15}' },
+//   { type: "function_call_output", call_id: "call_abc", output: "105" }
+// ]
 
 // Reasoning item
 interface ReasoningItem {
@@ -118,6 +130,12 @@ type ToolChoice =
   | "required"                             // Must call at least one
   | "none"                                 // No tool calls allowed
   | { type: "function"; name: string };    // Force specific tool
+
+// ⚠️ TOOL CHOICE NOTES:
+// - "required" is the most reliable way to force tool use across providers
+// - { type: "function", name: "X" } may not work consistently with all models
+// - "none" is useful after tool execution when you want a final text response
+// - Some providers may return both a message AND function_call in the same response
 ```
 
 ---

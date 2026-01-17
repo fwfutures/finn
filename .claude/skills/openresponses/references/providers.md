@@ -92,7 +92,34 @@ curl https://api.openai.com/v1/responses \
 
 ## Anthropic
 
-**Note**: Anthropic provides OpenAI Chat Completions compatibility at `/v1/chat/completions`, NOT native OpenResponses support. Use OpenRouter for Anthropic models with OpenResponses.
+**Note**: Anthropic does NOT have a native `/v1/responses` endpoint. There are two options:
+
+### Option 1: OpenRouter (Recommended for OpenResponses)
+
+Use OpenRouter to access Anthropic models via the OpenResponses API:
+
+```bash
+curl https://openrouter.ai/api/v1/responses \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic/claude-sonnet-4",
+    "input": "Hello!",
+    "tools": [{
+      "type": "function",
+      "name": "get_weather",
+      "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}
+    }],
+    "tool_choice": "required"
+  }'
+```
+
+**Tested models via OpenRouter**:
+- `anthropic/claude-sonnet-4` - Fast, capable
+- `anthropic/claude-opus-4` - Most capable
+- `anthropic/claude-haiku-4` - Fastest, cheapest
+
+### Option 2: Chat Completions API (Direct)
 
 **Endpoint**: `https://api.anthropic.com/v1/chat/completions` (Chat API only)
 
