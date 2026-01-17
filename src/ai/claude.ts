@@ -103,14 +103,37 @@ export async function generateClaudeResponse(
   let inputTokens = 0;
   let outputTokens = 0;
   const apiClient = options?.client ?? client;
-  let response = await apiClient.messages.create({
-    model: modelId,
-    max_tokens: 4096,
-    system,
-    messages: anthropicMessages,
-    tools: tools.length ? tools : undefined,
-    tool_choice: tools.length ? options?.toolChoice : undefined,
-  });
+  const createMessage = async (
+    params: Parameters<typeof apiClient.messages.create>[0],
+    step: number
+  ) => {
+    try {
+      return await apiClient.messages.create(params);
+    } catch (error) {
+      const details = error as { status?: number; error?: { type?: string; message?: string } };
+      const message = details?.error?.message ?? (error instanceof Error ? error.message : String(error));
+      console.error("Claude API error", {
+        modelId,
+        step,
+        status: details?.status,
+        type: details?.error?.type,
+        error: message,
+      });
+      throw error;
+    }
+  };
+
+  let response = await createMessage(
+    {
+      model: modelId,
+      max_tokens: 4096,
+      system,
+      messages: anthropicMessages,
+      tools: tools.length ? tools : undefined,
+      tool_choice: tools.length ? options?.toolChoice : undefined,
+    },
+    0
+  );
 
   inputTokens += response.usage.input_tokens;
   outputTokens += response.usage.output_tokens;
@@ -151,14 +174,17 @@ export async function generateClaudeResponse(
       content: toolResults,
     });
 
-    response = await apiClient.messages.create({
-      model: modelId,
-      max_tokens: 4096,
-      system,
-      messages: anthropicMessages,
-      tools: tools.length ? tools : undefined,
-      tool_choice: tools.length ? options?.toolChoice : undefined,
-    });
+    response = await createMessage(
+      {
+        model: modelId,
+        max_tokens: 4096,
+        system,
+        messages: anthropicMessages,
+        tools: tools.length ? tools : undefined,
+        tool_choice: tools.length ? options?.toolChoice : undefined,
+      },
+      step + 1
+    );
 
     inputTokens += response.usage.input_tokens;
     outputTokens += response.usage.output_tokens;

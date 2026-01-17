@@ -129,29 +129,53 @@ export async function generateOpenRouterResponse(
   let outputTokens = 0;
 
   for (let step = 0; step < 3; step++) {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.openrouterApiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": config.publicUrl,
-        "X-Title": "Finn Slack Bot",
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: openRouterMessages,
-        max_tokens: 4096,
-        tools: tools.length ? tools : undefined,
-        tool_choice: tools.length ? (options?.toolChoice ?? "auto") : undefined,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.openrouterApiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": config.publicUrl,
+          "X-Title": "Finn Slack Bot",
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: openRouterMessages,
+          max_tokens: 4096,
+          tools: tools.length ? tools : undefined,
+          tool_choice: tools.length ? (options?.toolChoice ?? "auto") : undefined,
+        }),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("OpenRouter API request failed", { modelId, step, error: message });
+      throw error;
+    }
 
     if (!response.ok) {
       const error = await response.text();
+      console.error("OpenRouter API error", {
+        modelId,
+        step,
+        status: response.status,
+        error,
+      });
       throw new Error(`OpenRouter API error: ${response.status} ${error}`);
     }
 
-    const data = (await response.json()) as OpenRouterResponse;
+    let data: OpenRouterResponse;
+    try {
+      data = (await response.json()) as OpenRouterResponse;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("OpenRouter API response parse error", {
+        modelId,
+        step,
+        error: message,
+      });
+      throw error;
+    }
     const choice = data.choices[0];
     const message = choice?.message;
     const toolCalls = message?.tool_calls ?? [];
